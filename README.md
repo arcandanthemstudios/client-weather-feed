@@ -1,4 +1,4 @@
-# 19107 ensemble feed: GitHub Actions + GitHub Pages
+# Feed for Client: GitHub Actions + GitHub Pages
 
 This is the GitHub-ready version of the existing collector. GitHub runs a short Node.js job; Pages hosts its resulting static files. It does not require Railway, Cloudflare, a running computer, a personal access token, or an Open-Meteo API key for eligible noncommercial use.
 
