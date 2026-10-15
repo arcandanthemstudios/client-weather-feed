@@ -41,6 +41,13 @@ jobs:
       - name: Fetch both ensembles and build the static feed
         id: collect
         run: npm run build
+      - name: Retain full evidence separately from the public site
+        uses: actions/upload-artifact@v4
+        with:
+          name: collector-evidence
+          path: _evidence/
+          retention-days: 1
+          if-no-files-found: error
       - name: Upload only the generated public weather site
         uses: actions/upload-pages-artifact@v4
         with:
@@ -85,7 +92,7 @@ jobs:
               const res = await fetch(url, { signal: AbortSignal.timeout(15000), cache: 'no-store' });
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const status = await res.json();
-              if (status.schema !== 'philly-ensemble-pages-v1' || status.test_only !== false)
+              if (status.schema !== 'client-ensemble-pages-v1' || status.test_only !== false)
                 throw new Error('Unexpected or test-only published data');
               if (status.generated_at_utc !== process.env.EXPECTED_BUILD)
                 throw new Error('Pages has not served this build yet');

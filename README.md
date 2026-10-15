@@ -17,11 +17,13 @@ Tests run offline. A production build requests live data, checks coverage and un
 
 - `index.html`: readable feed and status.
 - `latest.txt`: script-free text summary.
-- `latest.json`: derived statistics and validation status.
+- `latest.json`: derived statistics and validation status, without explicit coordinates or request URLs.
 - `status.json`: build timestamp, readiness and expiry.
-- `capture.json`: source-response evidence.
+- `capture.json`: a notice at the former raw-download address; it no longer contains source responses.
 
-Readers must check `test_only`, `ready_at_generation`, `status_at_generation` and `expires_at_utc`. A successful HTTP request does not establish that the forecast is current or complete. A failed acquisition must remain visibly unavailable or partial.
+Public status and data use the `client-ensemble-pages-v1` schema. Readers must check `test_only`, `ready_at_generation`, `status_at_generation` and `expires_at_utc`. A successful HTTP request does not establish that the forecast is current or complete. A failed acquisition must remain visibly unavailable or partial.
+
+Full acquisition evidence is kept separately in the short-lived `collector-evidence` workflow artifact, not in the Pages directory. This is data minimization, not anonymity: repository source, commit history and artifact permissions remain separate. Artifacts in a public repository are not private; signed-in users with repository read access can download them. Do not publish confidential location information in this configuration.
 
 ## Sources and interpretation
 

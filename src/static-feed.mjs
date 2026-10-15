@@ -2,6 +2,7 @@
 import { promises as fs } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { MODELS, iso, parseUTC, summarizeCapture, serveState, textFeed } from './core.mjs';
+import { publicView } from './public-view.mjs';
 export const MAX_AGE_MINUTES = 90;
 const htmlEscape = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
   .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
@@ -48,7 +49,7 @@ export function renderText(feed) {
         'Client weather ensemble supplement — not an official local forecast')
       .replace(/; grid [^;\n]+; distance /g, '; sampled-grid distance ')
       .replace('Use /latest.json for hourly windows and uncertainty; /capture.json for raw numerical evidence.',
-        'Use latest.json (relative to this page) for hourly windows and uncertainty; capture.json for raw evidence.')
+        'Use latest.json (relative to this page) for hourly windows and uncertainty. Raw responses are not published on this site.')
   ].join('\n') + '\n';
 }
 export function renderHTML(feed) {
@@ -59,7 +60,7 @@ export function renderHTML(feed) {
 <style>body{font:17px/1.6 system-ui,sans-serif;max-width:58rem;margin:2rem auto;padding:0 1rem}h1{font-size:1.6rem}h2{font-size:1.1rem}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}nav a{display:inline-block;margin-right:1rem}#current-status{border:1px solid;padding:.7rem}a{overflow-wrap:anywhere}</style></head>
 <body><h1>Client Weather Feed</h1><p>Not an official local forecast or a current observation.</p>
 <p id="current-status" data-expires="${htmlEscape(deadline)}" data-ready="${feed.ready_at_generation && !feed.test_only}" data-generated="${feed.generated_at_utc}">Status at build: ${htmlEscape(feed.status_at_generation)}. Check the expiry below before use.</p>
-<nav><a href="latest.txt">Text feed</a><a href="latest.json">Validated JSON</a><a href="capture.json">Raw weather responses</a><a href="status.json">Collection status</a></nav>
+<nav><a href="latest.txt">Text feed</a><a href="latest.json">Validated JSON</a><a href="status.json">Collection status</a></nav>
 <h2>Acquisition, forecast and uncertainty</h2><pre>${htmlEscape(renderText(feed))}</pre>
 <p>Attribution: <a href="https://open-meteo.com/">Open-Meteo</a>, ECMWF and Environment and Climate Change Canada.
 Weather data: <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Modifications: validation, per-model member statistics, unit conversions and specified interval aggregation.</p>
@@ -75,14 +76,19 @@ export async function writeSite(directory, capture, feed) {
     status_at_generation: feed.status_at_generation, ready_at_generation: feed.ready_at_generation,
     expires_at_utc: feed.expires_at_utc, model_deadlines: feed.model_deadlines,
     consumer_rule: feed.consumer_rule, per_value_model_initialization_verified: false };
-  const raw = { schema: 'philly-ensemble-pages-capture-v1', test_only: feed.test_only,
-    generated_at_utc: feed.generated_at_utc, expires_at_utc: feed.expires_at_utc,
-    consumer_rule: feed.consumer_rule, capture };
+  // Overwrite the legacy download URL with a notice, rather than leaving old data there.
+  const raw = { schema: 'client-ensemble-capture-notice-v1', test_only: feed.test_only,
+    generated_at_utc: feed.generated_at_utc, raw_responses_published: false,
+    note: 'Raw request and response data are not published on this site.' };
+  const published = publicView(feed);
+  published.publication = { coordinates_and_request_urls_omitted: true,
+    raw_responses_published: false,
+    caveat: 'Reduced public metadata is not anonymity; repository source and history are separate.' };
   await Promise.all([
     fs.writeFile(join(out,'index.html'), renderHTML(feed)),
     fs.writeFile(join(out,'latest.txt'), renderText(feed)),
-    fs.writeFile(join(out,'latest.json'), JSON.stringify(feed)),
-    fs.writeFile(join(out,'status.json'), JSON.stringify(status)),
+    fs.writeFile(join(out,'latest.json'), JSON.stringify(published)),
+    fs.writeFile(join(out,'status.json'), JSON.stringify(publicView(status))),
     fs.writeFile(join(out,'capture.json'), JSON.stringify(raw)),
     fs.writeFile(join(out,'.nojekyll'), ''),
     fs.writeFile(join(out,'robots.txt'), 'User-agent: *\nAllow: /\n')

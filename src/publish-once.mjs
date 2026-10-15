@@ -16,6 +16,11 @@ catch (error) {
 capture.execution_location = 'github_actions_once';
 const feed = makeFeed(capture);
 await writeSite(out, capture, feed);
+// Keep full provenance OUTSIDE the directory published by Pages.
+// Workflow artifacts are access-controlled by GitHub but are not private in a public repo.
+await fs.mkdir('_evidence', { recursive: true });
+await fs.writeFile('_evidence/capture.json', JSON.stringify(capture));
+await fs.writeFile('_evidence/validated.json', JSON.stringify(feed));
 const status = { generated_at_utc: feed.generated_at_utc, ready_at_generation: feed.ready_at_generation,
   status_at_generation: feed.status_at_generation, expires_at_utc: feed.expires_at_utc,
   models: feed.readiness_at_generation.models };
