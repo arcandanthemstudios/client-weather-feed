@@ -28,5 +28,7 @@ console.log(JSON.stringify(status, null, 2));
 if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT, `ready=${feed.ready_at_generation}\ngenerated_at_utc=${feed.generated_at_utc}\n`);
 if (process.env.GITHUB_STEP_SUMMARY) await fs.appendFile(process.env.GITHUB_STEP_SUMMARY,
   '## Weather collection result\n\n```text\n'+renderText(feed)+'```\n');
-// A failed acquisition must still publish an explicit unavailable/partial status.
-// The deployment job marks the workflow failed AFTER publishing that status.
+// Enrichment is independent: an unsupported field cannot erase a good base snapshot.
+try { await (await import('./supplement.mjs')).main(); }
+catch (error) { console.error('Supplement unavailable: '+String(error.message).slice(0,180)); }
+// The deployment job marks incomplete BASE acquisition failed after publishing its status.
