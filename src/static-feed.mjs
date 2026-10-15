@@ -10,6 +10,8 @@ export function makeFeed(capture, now = Date.now(), { testOnly = false } = {}) {
       capture?.execution_location !== 'github_actions_once'))
     throw new Error('Only a new acquisition from this collector may enter the public feed');
   const summary = summarizeCapture(capture, now);
+  // Neutral display labels do not change the target or source-data provenance.
+  summary.target = { ...summary.target, label: 'Configured forecast target' };
   const readiness = serveState(summary, now, MAX_AGE_MINUTES);
   const model_deadlines = readiness.models.map(check => {
     const model = summary.models.find(m => m.model === check.model);
@@ -42,6 +44,9 @@ export function renderText(feed) {
     `Do not use this comparison after: ${feed.expires_at_utc ?? 'NOT ELIGIBLE'}`,
     'A static page cannot certify freshness at the time you read it. Compare that deadline with the current time.', '',
     textFeed(feed.summary, feed.readiness_at_generation)
+      .replace(/^[^\n]*ensemble supplement[^\n]*/,
+        'Client weather ensemble supplement — not an official local forecast')
+      .replace(/; grid [^;\n]+; distance /g, '; sampled-grid distance ')
       .replace('Use /latest.json for hourly windows and uncertainty; /capture.json for raw numerical evidence.',
         'Use latest.json (relative to this page) for hourly windows and uncertainty; capture.json for raw evidence.')
   ].join('\n') + '\n';
@@ -50,9 +55,9 @@ export function renderHTML(feed) {
   const deadline = feed.expires_at_utc ?? '';
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow"><title>19107 ensemble feed</title>
+<meta name="robots" content="noindex,nofollow"><title>Client Weather Feed</title>
 <style>body{font:17px/1.6 system-ui,sans-serif;max-width:58rem;margin:2rem auto;padding:0 1rem}h1{font-size:1.6rem}h2{font-size:1.1rem}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}nav a{display:inline-block;margin-right:1rem}#current-status{border:1px solid;padding:.7rem}a{overflow-wrap:anywhere}</style></head>
-<body><h1>19107 ensemble supplement</h1><p>Not an official local forecast or a current observation.</p>
+<body><h1>Client Weather Feed</h1><p>Not an official local forecast or a current observation.</p>
 <p id="current-status" data-expires="${htmlEscape(deadline)}" data-ready="${feed.ready_at_generation && !feed.test_only}" data-generated="${feed.generated_at_utc}">Status at build: ${htmlEscape(feed.status_at_generation)}. Check the expiry below before use.</p>
 <nav><a href="latest.txt">Text feed</a><a href="latest.json">Validated JSON</a><a href="capture.json">Raw weather responses</a><a href="status.json">Collection status</a></nav>
 <h2>Acquisition, forecast and uncertainty</h2><pre>${htmlEscape(renderText(feed))}</pre>

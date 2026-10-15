@@ -1,4 +1,4 @@
-name: Collect and publish 19107 weather
+name: Refresh client weather feed
 
 on:
   workflow_dispatch:
