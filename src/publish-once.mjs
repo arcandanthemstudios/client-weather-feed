@@ -29,6 +29,8 @@ if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT, `r
 if (process.env.GITHUB_STEP_SUMMARY) await fs.appendFile(process.env.GITHUB_STEP_SUMMARY,
   '## Weather collection result\n\n```text\n'+renderText(feed)+'```\n');
 // Enrichment is independent: an unsupported field cannot erase a good base snapshot.
-try { await (await import('./supplement.mjs')).main(); }
-catch (error) { console.error('Supplement unavailable: '+String(error.message).slice(0,180)); }
+try {
+  await (await import('./supplement.mjs')).main();
+  await (await import('./source-checks.mjs')).main();
+} catch (error) { console.error('Supplement unavailable: '+String(error.message).slice(0,180)); }
 // The deployment job marks incomplete BASE acquisition failed after publishing its status.
