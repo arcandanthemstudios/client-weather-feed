@@ -3,7 +3,8 @@ import { promises as fs } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { MODELS, iso, parseUTC, summarizeCapture, serveState, textFeed } from './core.mjs';
 import { publicView } from './public-view.mjs';
-export const MAX_AGE_MINUTES = 90;
+import { MAX_ACQUISITION_AGE_MINUTES, ACQUISITION_NOTICE, POLICY_VERSION } from './freshness-policy.mjs';
+export const MAX_AGE_MINUTES = MAX_ACQUISITION_AGE_MINUTES;
 const htmlEscape = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
   .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 export function makeFeed(capture, now = Date.now(), { testOnly = false } = {}) {
@@ -26,13 +27,17 @@ export function makeFeed(capture, now = Date.now(), { testOnly = false } = {}) {
     test_only: testOnly, status_at_generation: readiness.ready ? 'complete' :
       readiness.models.some(m => m.usable) ? 'partial' : 'unavailable',
     ready_at_generation: readiness.ready, expires_at_utc: deadline,
+    acquisition_fresh_until_utc: deadline,
+    expiry_semantics: 'acquisition_age_only_not_forecast_validity',
+    use_policy_version: POLICY_VERSION,
     max_acquisition_age_minutes: MAX_AGE_MINUTES, model_deadlines,
     readiness_at_generation: readiness, summary,
-    consumer_rule: 'This is a static snapshot. Recheck current UTC time against expires_at_utc. HTTP 200 and ready_at_generation are not current freshness guarantees. Never use test_only data.',
+    consumer_rule: 'This is a static snapshot. expires_at_utc is a compatibility alias for acquisition_fresh_until_utc. ' + ACQUISITION_NOTICE + ' Validate source issue/observation times, requested coverage and newer evidence. Never call dated data fresh, never use test_only data, and freshly recheck alerts.',
     per_value_model_initialization_verified: false,
     same_run_comparison_permitted: false,
     scope: 'Public weather-model supplement only; no local observations, official alerts, air quality, calendar data or street-level claims.' };
 }
+/** Compatibility helper: eligibility as a FRESH complete collection only, not all forecast usability. */
 export function eligibleNow(feed, now = Date.now()) {
   if (feed?.test_only || !feed?.ready_at_generation || !feed?.expires_at_utc) return false;
   try { return now >= parseUTC(feed.generated_at_utc) - 300000 && now <= parseUTC(feed.expires_at_utc); }
@@ -42,8 +47,9 @@ export function renderText(feed) {
   return [feed.test_only ? 'TEST FIXTURE — NOT LIVE WEATHER' : 'GitHub Actions collection snapshot',
     `Snapshot generated: ${feed.generated_at_utc}`,
     `Status AT GENERATION: ${feed.status_at_generation}`,
-    `Do not use this comparison after: ${feed.expires_at_utc ?? 'NOT ELIGIBLE'}`,
-    'A static page cannot certify freshness at the time you read it. Compare that deadline with the current time.', '',
+    `Fresh acquisition window ends: ${feed.acquisition_fresh_until_utc ?? feed.expires_at_utc ?? 'UNVERIFIED'}`,
+    ACQUISITION_NOTICE,
+    'Collected is not used: the report must record which evidence actually supported its claims.', '',
     textFeed(feed.summary, feed.readiness_at_generation)
       .replace(/^[^\n]*ensemble supplement[^\n]*/,
         'Client weather ensemble supplement — not an official local forecast')
@@ -64,7 +70,7 @@ export function renderHTML(feed) {
 <h2>Acquisition, forecast and uncertainty</h2><pre>${htmlEscape(renderText(feed))}</pre>
 <p>Attribution: <a href="https://open-meteo.com/">Open-Meteo</a>, ECMWF and Environment and Climate Change Canada.
 Weather data: <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Modifications: validation, per-model member statistics, unit conversions and specified interval aggregation.</p>
-<script>const box=document.getElementById('current-status');function updateStatus(){const now=Date.now(),deadline=Date.parse(box.dataset.expires),generated=Date.parse(box.dataset.generated);box.textContent=box.dataset.ready==='true'&&Number.isFinite(deadline)&&now>=generated-300000&&now<=deadline?'Within the acquisition-age window. Model initialization is still not independently verified.':'STALE OR INCOMPLETE — do not use as a fresh complete ensemble comparison.';}updateStatus();setInterval(updateStatus,30000);</script>
+<script>const box=document.getElementById('current-status');function updateStatus(){const now=Date.now(),deadline=Date.parse(box.dataset.expires),generated=Date.parse(box.dataset.generated);box.textContent=box.dataset.ready==='true'&&Number.isFinite(deadline)&&now>=generated-300000&&now<=deadline?'Within the acquisition-age window. Model initialization is still not independently verified.':'Collection is dated or incomplete. Review each source and forecast window; do not label it fresh.';}updateStatus();setInterval(updateStatus,30000);</script>
 </body></html>`;
 }
 export async function writeSite(directory, capture, feed) {
@@ -75,6 +81,8 @@ export async function writeSite(directory, capture, feed) {
   const status = { schema: feed.schema, test_only: feed.test_only, generated_at_utc: feed.generated_at_utc,
     status_at_generation: feed.status_at_generation, ready_at_generation: feed.ready_at_generation,
     expires_at_utc: feed.expires_at_utc, model_deadlines: feed.model_deadlines,
+    acquisition_fresh_until_utc: feed.acquisition_fresh_until_utc,
+    expiry_semantics: feed.expiry_semantics, use_policy_version: feed.use_policy_version,
     consumer_rule: feed.consumer_rule, per_value_model_initialization_verified: false };
   // Overwrite the legacy download URL with a notice, rather than leaving old data there.
   const raw = { schema: 'client-ensemble-capture-notice-v1', test_only: feed.test_only,

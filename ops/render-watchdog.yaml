@@ -1,0 +1,19 @@
+# Deployment template, not evidence of an active external service.
+# Review billing and securely set the narrowly scoped token before applying.
+services:
+  - type: cron
+    name: client-weather-watchdog
+    runtime: python
+    repo: https://github.com/arcandanthemstudios/client-weather-feed
+    branch: main
+    plan: 0.5c-512mb
+    region: virginia
+    schedule: '15,35,50 9,10,15,16,21,22 * * *'
+    buildCommand: python3 -m unittest discover -s ops -p 'test_*.py'
+    startCommand: python3 ops/watchdog.py
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: COLLECTOR_REPOSITORY
+        value: arcandanthemstudios/client-weather-feed
+      - key: GITHUB_ACTIONS_TOKEN
+        sync: false

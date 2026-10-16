@@ -1,7 +1,14 @@
 name: Refresh client weather feed
+run-name: ${{ inputs.collection_slot && format('Refresh client weather feed [{0}]', inputs.collection_slot) || 'Refresh client weather feed' }}
 
 on:
   workflow_dispatch:
+    inputs:
+      collection_slot:
+        description: 'Intended report slot in UTC; provenance only, never a command'
+        required: false
+        type: string
+        default: ''
   schedule:
     - cron: '35 5,11,17 * * *'
       timezone: 'America/New_York'
@@ -10,6 +17,7 @@ on:
     paths:
       - 'src/**'
       - 'test/**'
+      - 'ops/**'
       - 'package.json'
       - '.github/workflows/weather.yml'
 
@@ -37,10 +45,16 @@ jobs:
         with:
           node-version: '22'
       - name: Run offline validation tests
-        run: npm test
+        run: |
+          npm test
+          python3 -m unittest discover -s ops -p 'test_*.py' -v
       - name: Fetch both ensembles and build the static feed
         id: collect
         run: npm run build
+      - name: Record collection provenance without claiming report consumption
+        env:
+          COLLECTOR_SLOT_UTC: ${{ inputs.collection_slot }}
+        run: node src/collection-receipt.mjs
       - name: Retain full evidence separately from the public site
         uses: actions/upload-artifact@v4
         with:
