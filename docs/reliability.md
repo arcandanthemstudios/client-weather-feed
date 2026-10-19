@@ -4,19 +4,19 @@ A successful collection is not a successful report. A recently fetched source is
 
 ## Active collection schedule
 
-Effective with the October 19, 2026 schedule change, the native GitHub workflow uses `0 2,9,16 * * *` with `timezone: America/New_York`. This replaces the previous 05:35, 11:35 and 17:35 native schedule. The identical `WORKFLOW.yml` reference copy must stay aligned with `.github/workflows/weather.yml`.
+Effective with the later October 19, 2026 schedule change, the native GitHub workflow uses `35 0,6,15 * * *` with `timezone: America/New_York`. This replaces the previous 02:00, 09:00 and 16:00 native schedule. The identical `WORKFLOW.yml` reference copy must stay aligned with `.github/workflows/weather.yml`.
 
 | Intended collector start, Eastern | Associated report/check slot, Eastern | Planned lead time |
 | --- | --- | --- |
-| 02:00 | 06:00 | 4 hours |
-| 09:00 | 12:00 | 3 hours |
-| 16:00 | 18:00 | 2 hours |
+| 00:35 | 06:00 | 5 hours 25 minutes |
+| 06:35 | 12:00 | 5 hours 25 minutes |
+| 15:35 | 18:00 | 2 hours 25 minutes |
 
-This is a change to the existing collector's native schedule, not activation of another host or checker. The separate report/check schedules, delivery conditions, notification settings, permissions and privacy rules remain unchanged. A schedule entry is an intended start, not proof of actual execution, publication or report consumption. Inspect actual run history and artifact timestamps. Do not infer a missed collection solely because its acquisition age exceeds 90 minutes, and do not continue expecting the old :35 native starts.
+This is a change to the existing collector's native schedule, not activation of another host or checker. The separate report/check schedules, delivery conditions, notification settings, permissions and privacy rules remain unchanged. A schedule entry is an intended start, not proof of actual execution, publication or report consumption. Inspect actual run history and artifact timestamps. Do not infer a missed collection solely because its acquisition age exceeds 90 minutes, and do not continue expecting superseded native starts.
 
 A collection that starts on time can be acquisition-aged by its associated report. The 90-minute acquisition label is unchanged and is not the forecast's useful lifetime. Review covered forecast periods, source updates, completeness and newer evidence at report time; record accepted dated use and its reason. Freshly recheck alerts and current observations/air quality. Neither an early collection nor an earlier empty alert response establishes current conditions or an all-clear.
 
-GitHub may delay or drop scheduled starts, especially near the start of an hour. Extra lead time is a buffer, not a punctuality guarantee. GitHub's documented spring-forward behavior advances a schedule in a skipped local hour to the next valid time; the 02:00 slot therefore moves to 03:00 on that transition day. Keep the IANA timezone rather than treating these hours as fixed UTC offsets.
+GitHub may delay or drop scheduled starts, especially near the start of an hour. Moving to minute 35 follows its documented advice to avoid the start of an hour, but is not a punctuality guarantee. Extra lead time is a buffer and can leave older forecasts at report time if acquisition runs on time. Keep the IANA timezone rather than treating these hours as fixed UTC offsets. The new local hours avoid the spring-forward skipped 02:00 hour; daylight-saving transitions still require interval-aware forecast review.
 
 ## Independent starter and checker, optional and not activated here
 

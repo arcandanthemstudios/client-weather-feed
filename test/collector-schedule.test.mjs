@@ -9,7 +9,7 @@ const workflow = read('.github/workflows/weather.yml');
 test('collector has only the approved early daily schedule in Eastern time', () => {
   const schedule = workflow.match(/^  schedule:\n([\s\S]*?)(?=^  \w|^\S)/m)?.[1];
   assert.ok(schedule, 'Missing native schedule block');
-  assert.deepEqual([...schedule.matchAll(/^    - cron: '([^']+)'$/gm)].map(x => x[1]), ['0 2,9,16 * * *']);
+  assert.deepEqual([...schedule.matchAll(/^    - cron: '([^']+)'$/gm)].map(x => x[1]), ['35 0,6,15 * * *']);
   assert.match(schedule, /^      timezone: 'America\/New_York'$/m);
 });
 
