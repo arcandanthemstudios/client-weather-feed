@@ -80,7 +80,7 @@ test('Workflow copies match and use Eastern timezone and official Pages artifact
   const a=await fs.readFile('.github/workflows/weather.yml','utf8');
   const b=await fs.readFile('WORKFLOW.yml','utf8');
   assert.equal(a,b); assert.match(a,/timezone: 'America\/New_York'/);
-  assert.match(a,/cron: '35 5,11,17 \* \* \*'/);
+  assert.match(a,/cron: '0 2,9,16 \* \* \*'/);
   assert.match(a,/actions\/deploy-pages@v4/); assert.match(a,/path: _site/);
   assert.ok(!a.includes('contents: write')); assert.match(a,/retention-days: 1/);
 });
