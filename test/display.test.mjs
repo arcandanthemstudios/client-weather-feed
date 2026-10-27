@@ -34,7 +34,8 @@ test('Workflow display names stay generic in both workflow copies', async () => 
   const b = await fs.readFile('WORKFLOW.yml', 'utf8');
   assert.equal(a, b);
   assert.equal(a.split('\n')[0], 'name: Refresh client weather feed');
-  assert.ok(a.includes("cron: '35 0,6 * * *'"));
-  assert.ok(a.includes("cron: '13 14 * * *'"));
+  assert.ok(a.includes("cron: '3 0 * * *'"));
+  assert.ok(a.includes("cron: '35 5 * * *'"));
+  assert.ok(a.includes("cron: '26 13 * * *'"));
   assert.ok(a.includes("timezone: 'America/New_York'"));
 });

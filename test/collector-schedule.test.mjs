@@ -9,8 +9,8 @@ const workflow = read('.github/workflows/weather.yml');
 test('collector has only the approved early daily schedule in Eastern time', () => {
   const schedule = workflow.match(/^  schedule:\n([\s\S]*?)(?=^  \w|^\S)/m)?.[1];
   assert.ok(schedule, 'Missing native schedule block');
-  assert.deepEqual([...schedule.matchAll(/^    - cron: '([^']+)'$/gm)].map(x => x[1]), ['35 0,6 * * *', '13 14 * * *']);
-  assert.equal([...schedule.matchAll(/^      timezone: 'America\/New_York'$/gm)].length, 2, 'Each schedule must keep Eastern local time');
+  assert.deepEqual([...schedule.matchAll(/^    - cron: '([^']+)'$/gm)].map(x => x[1]), ['3 0 * * *', '35 5 * * *', '26 13 * * *']);
+  assert.equal([...schedule.matchAll(/^      timezone: 'America\/New_York'$/gm)].length, 3, 'Each schedule must keep Eastern local time');
 });
 
 test('reference workflow stays identical to the active workflow', () => {

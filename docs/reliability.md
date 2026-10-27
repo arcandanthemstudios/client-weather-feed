@@ -4,21 +4,21 @@ A successful collection is not a successful report. A recently fetched source is
 
 ## Active collection schedule
 
-Effective with the evening October 19, 2026 schedule change, the native GitHub workflow uses `35 0,6 * * *` and `13 14 * * *`, each with `timezone: America/New_York`. Only the afternoon collection moves from 15:35 to 14:13; 00:35 and 06:35 stay unchanged. The identical `WORKFLOW.yml` reference copy must stay aligned with `.github/workflows/weather.yml`.
+Effective with the October 27, 2026 schedule change on main, the native GitHub workflow uses `3 0 * * *`, `35 5 * * *` and `26 13 * * *`, each with `timezone: America/New_York`. The intended daily starts are 00:03, 05:35 and 13:26 Eastern, replacing 00:35, 06:35 and 14:13. The identical `WORKFLOW.yml` reference copy must stay aligned with `.github/workflows/weather.yml`.
 
 | Intended collector start, Eastern | Associated report/check slot, Eastern | Planned lead time |
 | --- | --- | --- |
-| 00:35 | 06:00 | 5 hours 25 minutes |
-| 06:35 | 12:00 | 5 hours 25 minutes |
-| 14:13 | 18:00 | 3 hours 47 minutes |
+| 00:03 | 06:00 | 5 hours 57 minutes |
+| 05:35 | 12:00 | 6 hours 25 minutes |
+| 13:26 | 18:00 | 4 hours 34 minutes |
 
-For historical timing audits, apply the schedule actually in effect at each occurrence. October 19 began with 02:00, 09:00 and 16:00; the midday change set 00:35, 06:35 and 15:35. This evening change does not retroactively turn October 19's 15:35 slot into a 14:13 slot. Its first upcoming afternoon occurrence is October 20 at 14:13 Eastern.
+For historical timing audits, apply the schedule actually in effect at each occurrence. October 19 began with 02:00, 09:00 and 16:00; the midday change set 00:35, 06:35 and 15:35. That evening the afternoon slot moved to 14:13, first upcoming on October 20. The October 27 change applies only after its commit reaches main; it does not relabel earlier runs or replay elapsed slots. The completed October 19-25 audit is not restarted or extended.
 
 This is a change to the existing collector's native schedule, not activation of another host or checker. The separate report/check schedules, delivery conditions, notification settings, permissions and privacy rules remain unchanged. A schedule entry is an intended start, not proof of actual execution, publication or report consumption. Inspect actual run history and artifact timestamps. Do not infer a missed collection solely because its acquisition age exceeds 90 minutes, and do not continue expecting superseded native starts.
 
 A collection that starts on time can be acquisition-aged by its associated report. The 90-minute acquisition label is unchanged and is not the forecast's useful lifetime. Review covered forecast periods, source updates, completeness and newer evidence at report time; record accepted dated use and its reason. Freshly recheck alerts and current observations/air quality. Neither an early collection nor an earlier empty alert response establishes current conditions or an all-clear.
 
-GitHub may delay or drop scheduled starts, especially near the start of an hour. Minutes 35 and 13 avoid the start of an hour, but are not a punctuality guarantee. Extra lead time is a buffer and can leave older forecasts at report time if acquisition runs on time. Keep the IANA timezone rather than treating these hours as fixed UTC offsets. The local hours avoid the spring-forward skipped 02:00 hour; daylight-saving transitions still require interval-aware forecast review.
+GitHub may delay or drop scheduled starts, especially near the start of an hour. The approved minutes 3, 35 and 26 do not guarantee punctuality; no specific minute is treated as a reliability fix. Extra lead time is a buffer and can leave older forecasts at report time if acquisition runs on time. Keep the IANA timezone rather than treating these hours as fixed UTC offsets. The local hours avoid the spring-forward skipped 02:00 hour; daylight-saving transitions still require interval-aware forecast review.
 
 ## Independent starter and checker, optional and not activated here
 
