@@ -114,10 +114,12 @@ export function validateRecord(record, variables = REQUIRED) {
     if (!UNITS[variable]) throw new Error('Unsupported variable semantics');
     let map;
     try { map = memberMap(raw.hourly, variable); }
-    catch (error) { issues.push(error.message); result[variable] = { usable: false, problems: [error.message] }; continue; }
-    const problems = [];
+    catch (error) { issues.push(error.message); result[variable] = { usable: false, window_usable: false, arrays: [],
+      structural_problems: [error.message], problems: [error.message] }; continue; }
+    // Identity, units and shape errors cannot be repaired by isolating cells.
+    const structuralProblems = [], valueProblems = [], invalidValues = [];
     if (map.size !== spec.count || Array.from({ length: spec.count }, (_, i) => i).some(i => !map.has(i)))
-      problems.push(`Expected exactly API series IDs 0..${spec.count - 1}; received ${map.size}`);
+      structuralProblems.push(`Expected exactly API series IDs 0..${spec.count - 1}; received ${map.size}`);
     const arrays = [];
     let missing = 0;
     for (let id = 0; id < spec.count; id++) {
@@ -125,15 +127,27 @@ export function validateRecord(record, variables = REQUIRED) {
       if (!a) continue;
       const unitKey = Object.keys(raw.hourly).find(k => k === key ||
         (id > 0 && k.startsWith(variable + '_member') && Number(k.slice(variable.length + 7)) === id));
-      if (raw.hourly_units[unitKey] !== UNITS[variable]) problems.push(`Unexpected ${variable} units for member ${id}`);
-      if (!Array.isArray(a) || a.length !== timestamps.length) { problems.push(`Bad ${variable} array length for member ${id}`); continue; }
-      if (a.some(v => v !== null && !finite(v))) problems.push(`Non-numeric ${variable} value for member ${id}`);
-      if (variable !== 'temperature_2m' && a.some(v => finite(v) && v < 0)) problems.push(`Negative ${variable}; interval semantics or data invalid`);
-      missing += a.filter(v => v === null).length;
-      arrays.push(a);
+      if (raw.hourly_units[unitKey] !== UNITS[variable]) structuralProblems.push(`Unexpected ${variable} units for member ${id}`);
+      if (!Array.isArray(a) || a.length !== timestamps.length) { structuralProblems.push(`Bad ${variable} array length for member ${id}`); continue; }
+      // Copy, never edit raw_response. A rejected cell becomes unavailable, never zero.
+      arrays.push(a.map((value, index) => {
+        if (value === null) { missing++; return null; }
+        const reason = !finite(value) ? 'non_numeric' : variable !== 'temperature_2m' && value < 0 ? 'negative' : null;
+        if (!reason) return value;
+        invalidValues.push({ member_id: id, index, valid_utc: iso(timestamps[index]), value, reason });
+        valueProblems.push(reason === 'negative' ? `Negative ${variable}; interval semantics or data invalid` :
+          `Non-numeric ${variable} value for member ${id}`);
+        return null;
+      }));
     }
-    result[variable] = { usable: problems.length === 0, arrays: problems.length ? [] : arrays,
-      missing_values: missing, expected_members: spec.count, problems: [...new Set(problems)] };
+    const problems = [...new Set([...structuralProblems, ...valueProblems])];
+    result[variable] = {
+      // Keep the legacy whole-field flag strict. window_usable is only structural eligibility.
+      usable: problems.length === 0, window_usable: structuralProblems.length === 0,
+      arrays: structuralProblems.length ? [] : arrays,
+      missing_values: missing, invalid_value_count: invalidValues.length,
+      invalid_values: invalidValues, expected_members: spec.count, problems,
+      structural_problems: [...new Set(structuralProblems)] };
     issues.push(...problems);
   }
   return { requested_model: record.requested_model, expected_members: spec.count,
@@ -172,22 +186,32 @@ export function assessMetadata(before, after, receivedAt) {
     before_and_after_match: stable, availability_at_least_ten_minutes_old: settled,
     operational_stale_guard_hours: (2 * a.update_interval_seconds + 12 * 3600) / 3600 };
 }
-function valuesAt(v, index) { return v?.usable ? v.arrays.map(a => a[index]) : []; }
+// Only this path may use a structurally valid field containing isolated rejected cells.
+function windowUsable(v) { return v?.window_usable ?? v?.usable ?? false; }
+function valuesAt(v, index) { return windowUsable(v) ? v.arrays.map(a => a[index]) : []; }
+function completeStats(values, expected) {
+  const s = stats(values, expected);
+  if (s.complete) return s;
+  // Never publish a subset median or fraction as a complete ensemble estimate.
+  return { ...s, p10: null, median: null, p90: null, unavailable: true,
+    incomplete_member_ids: Array.from({ length: expected }, (_, id) => id).filter(id => !finite(values[id])),
+    reason: 'Missing or rejected member values in this exact window; no reduced-ensemble estimate.' };
+}
 function expectedHours(start, end, ending) {
   const out = [];
   for (let t = start + (ending ? HOUR : 0); t < end + (ending ? HOUR : 0); t += HOUR) out.push(t);
   return out;
 }
 function period(v, validated, start, end, reduction, ending = false) {
-  if (!v?.usable) return { ...stats([], validated.expected_members), start_utc: iso(start), end_utc: iso(end), unavailable: true };
+  if (!windowUsable(v)) return { ...completeStats([], validated.expected_members), start_utc: iso(start), end_utc: iso(end), unavailable: true };
   const indices = expectedHours(start, end, ending).map(t => validated.timestamps.indexOf(t));
   if (!indices.length || indices.some(i => i < 0)) return {
-    ...stats([], validated.expected_members), start_utc: iso(start), end_utc: iso(end), incomplete_time_coverage: true };
+    ...completeStats([], validated.expected_members), start_utc: iso(start), end_utc: iso(end), incomplete_time_coverage: true };
   const memberValues = v.arrays.map(a => {
     const x = indices.map(i => a[i]);
     return x.every(finite) ? reduction(x) : null;
   });
-  return { ...stats(memberValues, validated.expected_members), start_utc: iso(start), end_utc: iso(end),
+  return { ...completeStats(memberValues, validated.expected_members), start_utc: iso(start), end_utc: iso(end),
     sample_count_per_member: indices.length, member_values: memberValues };
 }
 export function precipitationPeriod(validated, start, end, thresholdMm = 1) {
@@ -197,8 +221,8 @@ export function precipitationPeriod(validated, start, end, thresholdMm = 1) {
   delete p.member_values;
   return { ...p, units: 'mm liquid-water equivalent',
     timestamp_semantics: 'preceding-hour sums; interval is (start, end] on returned timestamps',
-    threshold_mm: thresholdMm, members_at_or_above_threshold: vals.length ? exceed : null,
-    raw_member_fraction: vals.length ? exceed / vals.length : null,
+    threshold_mm: thresholdMm, members_at_or_above_threshold: p.complete ? exceed : null,
+    raw_member_fraction: p.complete ? exceed / p.expected_n : null,
     calibrated_probability: false, chance_of_precipitation_nws: null };
 }
 function discardValues(p) { delete p.member_values; return p; }
@@ -225,15 +249,15 @@ export function summarizeRecord(record, now = Date.now(), variables = REQUIRED) 
         boundary(date, 0), boundary(next, 0), a => Math.max(...a))) };
   });
   const hourly = v.timestamps.map((t, i) => ({ valid_utc: iso(t), local: localParts(t),
-    temperature_c: stats(valuesAt(v.variables.temperature_2m, i), v.expected_members),
-    wind_speed_ms: stats(valuesAt(v.variables.wind_speed_10m, i), v.expected_members),
-    precipitation_previous_hour_mm: stats(valuesAt(v.variables.precipitation, i), v.expected_members)
+    temperature_c: completeStats(valuesAt(v.variables.temperature_2m, i), v.expected_members),
+    wind_speed_ms: completeStats(valuesAt(v.variables.wind_speed_10m, i), v.expected_members),
+    precipitation_previous_hour_mm: completeStats(valuesAt(v.variables.precipitation, i), v.expected_members)
   })).filter(x => parseUTC(x.valid_utc) >= Math.floor(now / HOUR) * HOUR && parseUTC(x.valid_utc) <= now + 84 * HOUR);
   const requiredEnd = boundary(addDate(today, 3), 6);
   const futureTimes = expectedHours(Math.ceil(now / HOUR) * HOUR, requiredEnd, false);
   const completeFuture = futureTimes.length > 0 && REQUIRED.every(variable => {
     const vv = v.variables[variable];
-    return vv?.usable && futureTimes.every(t => {
+    return windowUsable(vv) && futureTimes.every(t => {
       const i = v.timestamps.indexOf(t);
       return i >= 0 && vv.arrays.every(a => finite(a[i]));
     });
@@ -248,9 +272,13 @@ export function summarizeRecord(record, now = Date.now(), variables = REQUIRED) 
     coverage_start_utc: iso(v.timestamps[0]), coverage_end_utc: iso(v.timestamps.at(-1)),
     acquisition_age_minutes: (now - receivedMs) / 60000,
     expected_future_end_utc: iso(requiredEnd), complete_future_required_variables: completeFuture,
+    returned_value_checks_passed: REQUIRED.every(k => v.variables[k]?.usable === true),
+    validation_scope: 'Rejected cells are isolated; use each exact window only when all expected members are valid.',
     variables: Object.fromEntries(Object.entries(v.variables).map(([k, x]) => [k, {
-      status: !x.usable ? 'invalid_or_unavailable' : x.missing_values ? 'partial_values' : 'numerical_values_validated',
-      missing_values: x.missing_values ?? null, problems: x.problems, units: UNITS[k] }])),
+      status: !windowUsable(x) ? 'invalid_or_unavailable' : x.missing_values || x.invalid_value_count ? 'partial_values' : 'numerical_values_validated',
+      missing_values: x.missing_values ?? null, invalid_value_count: x.invalid_value_count ?? 0,
+      affected_member_ids: [...new Set((x.invalid_values ?? []).map(z => z.member_id))],
+      problems: x.problems, units: UNITS[k] }])),
     metadata, problems: v.problems, days, hourly,
     interpretation: ['Model output, not observations or a replacement for NWS local forecasts/alerts.',
       'Different model grid points and unknown per-value initialization limit between-model attribution.',
@@ -282,9 +310,10 @@ export function serveState(summary, now = Date.now(), maxAgeMinutes = 90) {
     const fresh = age !== null && age >= -5 && age <= maxAgeMinutes;
     return { model: id, fresh_acquisition: fresh, acquisition_age_minutes: age,
       complete_future_required_variables: Boolean(m?.complete_future_required_variables),
+      returned_value_checks_passed: Boolean(m && m.returned_value_checks_passed !== false),
       provider_metadata_guard_passed: !blockedMeta,
       provider_metadata_status: m?.metadata?.status ?? 'unavailable',
-      usable: Boolean(m && !m.error && fresh && !blockedMeta && m.complete_future_required_variables) };
+      usable: Boolean(m && !m.error && fresh && !blockedMeta && m.complete_future_required_variables && m.returned_value_checks_passed !== false) };
   });
   return { checked_at_utc: iso(now), max_acquisition_age_minutes: maxAgeMinutes,
     ready: checks.every(c => c.usable), models: checks,
@@ -296,7 +325,8 @@ export function textFeed(summary, readiness) {
     `Checked: ${readiness.checked_at_utc}`,
     `Usability gate: ${readiness.ready ? 'PASS (acquisition/coverage only; run provenance unverified)' : 'NOT READY — do not treat this as a fresh complete comparison'}`,
     'All values are model forecasts via Open-Meteo. No current observations, alerts or calendar data.',
-    'Different sampled grid points; no claim of verified same-run comparison.', ''];
+    'Different sampled grid points; no claim of verified same-run comparison.',
+    'Rejected cells remain unavailable. Unaffected windows retain every expected member; incomplete-window statistics are suppressed.', ''];
   for (const m of summary?.models ?? []) {
     lines.push(m.name ?? m.model);
     if (m.error) { lines.push(`Unavailable: ${m.error}`, ''); continue; }

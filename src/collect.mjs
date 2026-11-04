@@ -1,6 +1,6 @@
 /** Acquisition occurs in this internet-capable Node service, never in the report writer. */
 import { createHash } from 'node:crypto';
-import { MODELS, TARGET, REQUIRED, iso, validateRecord } from './core.mjs';
+import { MODELS, TARGET, REQUIRED, iso, validateRecord, parseUTC, assessMetadata } from './core.mjs';
 export const FORECAST_ORIGIN = 'https://ensemble-api.open-meteo.com';
 export const META_ORIGIN = 'https://api.open-meteo.com';
 export function forecastURL(model, { variables = REQUIRED, probe = false } = {}) {
@@ -89,7 +89,7 @@ export async function requestJSON(url, options = {}) {
   }
   return { ...audits.at(-1), attempts: audits };
 }
-export async function collectModel(model, options = {}) {
+async function collectModelOnce(model, options = {}) {
   const variables = options.variables ?? REQUIRED;
   const url = forecastURL(model, { variables, probe: options.probe });
   const metadata_before = await requestJSON(metadataURL(model), { ...options, attempts: 1, maxBytes: 128 * 1024 });
@@ -104,7 +104,9 @@ export async function collectModel(model, options = {}) {
     try {
       const v = validateRecord(result, variables);
       result.numeric_validation = { validated_variables: Object.fromEntries(Object.entries(v.variables)
-        .map(([k, x]) => [k, { usable: x.usable, missing_values: x.missing_values ?? null, problems: x.problems }])),
+        .map(([k, x]) => [k, { usable: x.usable, window_usable: x.window_usable ?? false,
+          missing_values: x.missing_values ?? null, invalid_value_count: x.invalid_value_count ?? 0,
+          invalid_values: x.invalid_values ?? [], problems: x.problems }])),
         member_series: v.expected_members, grid_distance_km: v.grid_distance_km,
         returned_coordinates: v.sampled_coordinates, problems: v.problems,
         model_initialization: null, same_run_comparison_permitted: false };
@@ -112,6 +114,45 @@ export async function collectModel(model, options = {}) {
     } catch (error) { result.status = 'invalid_numerical_response'; result.validation_error = error.message; }
   }
   return result;
+}
+export const NUMERICAL_RETRY_WAIT_MS = 5000;
+export const MAX_NUMERICAL_RETRIES = 1;
+function hasNumericalDefect(record) {
+  const v = record.numeric_validation;
+  return Boolean(v && (v.problems.length || Object.values(v.validated_variables).some(x => x.missing_values > 0)));
+}
+function retryIsComplete(first, retry) {
+  if (!retry.numeric_validation || hasNumericalDefect(retry)) return false;
+  const meta = assessMetadata(retry.metadata_before, retry.metadata_after, retry.received_at_utc);
+  if (['provider_metadata_stale', 'invalid_or_future_metadata', 'metadata_changed_during_fetch',
+    'provider_update_still_propagating'].includes(meta.status)) return false;
+  // A shorter response must not erase the original response's unaffected periods.
+  const before = first.raw_response.hourly.time.map(parseUTC), after = retry.raw_response.hourly.time.map(parseUTC);
+  return after[0] <= before[0] && after.at(-1) >= before.at(-1);
+}
+export async function collectModel(model, options = {}) {
+  const clock = options.clock ?? Date.now, sleep = options.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
+  // At most two transport attempts initially, then one numerical re-acquisition with one transport attempt.
+  const bounded = { ...options, attempts: Math.max(1, Math.min(2, options.attempts ?? 2)) };
+  const first = await collectModelOnce(model, bounded);
+  const audit = { max_numerical_retries: MAX_NUMERICAL_RETRIES, performed: false, selected_attempt: 1,
+    reason: 'no_numerical_retry_needed', response_splicing_permitted: false };
+  if (!hasNumericalDefect(first)) return { ...first, numerical_retry: audit };
+  const wait = retryDelay(new Headers(first.response_headers ?? {}), clock(), NUMERICAL_RETRY_WAIT_MS);
+  const maxWait = Math.min(10000, options.maxRetryWaitMs ?? 10000);
+  if (!Number.isFinite(wait) || wait > maxWait) return { ...first, numerical_retry: {
+    ...audit, reason: 'provider_retry_after_exceeds_budget',
+    do_not_retry_before_utc: Number.isFinite(wait) ? iso(clock() + wait) : null } };
+  await sleep(wait);
+  // This is a complete, independently bracketed acquisition of the SAME source. No member/field mixing.
+  const retry = await collectModelOnce(model, { ...bounded, attempts: 1 });
+  const useRetry = retryIsComplete(first, retry), selected = useRetry ? retry : first;
+  return { ...selected,
+    numerical_attempts: [{ acquisition_attempt: 1, record: first }, { acquisition_attempt: 2, record: retry }],
+    numerical_retry: { ...audit, performed: true, wait_ms: wait, selected_attempt: useRetry ? 2 : 1,
+      latest_attempt_status: retry.status, latest_attempt_received_at_utc: retry.received_at_utc,
+      reason: useRetry ? 'selected_complete_retry_response' : 'retained_original_retry_failed_or_not_complete',
+      original_response_sha256: first.response_sha256 ?? null, retry_response_sha256: retry.response_sha256 ?? null } };
 }
 export async function collect(options = {}) {
   const clock = options.clock ?? Date.now;
