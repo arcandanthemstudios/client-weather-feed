@@ -10,13 +10,13 @@ on:
         type: string
         default: ''
   schedule:
-    - cron: '36 0 * * *'
+    - cron: '31 2 * * *'
       timezone: 'America/New_York'
-    - cron: '36 6 * * *'
+    - cron: '39 8 * * *'
       timezone: 'America/New_York'
-    - cron: '36 12 * * *'
+    - cron: '35 14 * * *'
       timezone: 'America/New_York'
-    - cron: '36 18 * * *'
+    - cron: '23 22 * * *'
       timezone: 'America/New_York'
   push:
     branches: [main]

@@ -84,10 +84,10 @@ test('Deployment rejects missing, wrong-run and malformed package names', () => 
 });
 
 test('Retry repair retains evidence, approved schedule and safety checks', () => {
-  assert.ok(workflow.includes("cron: '36 0 * * *'"));
-  assert.ok(workflow.includes("cron: '36 6 * * *'"));
-  assert.ok(workflow.includes("cron: '36 12 * * *'"));
-  assert.ok(workflow.includes("cron: '36 18 * * *'"));
+  assert.ok(workflow.includes("cron: '31 2 * * *'"));
+  assert.ok(workflow.includes("cron: '39 8 * * *'"));
+  assert.ok(workflow.includes("cron: '35 14 * * *'"));
+  assert.ok(workflow.includes("cron: '23 22 * * *'"));
   assert.ok(workflow.includes("timezone: 'America/New_York'"));
   assert.ok(workflow.includes('name: collector-evidence'));
   assert.ok(workflow.includes('path: _evidence/'));

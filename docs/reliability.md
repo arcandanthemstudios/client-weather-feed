@@ -4,22 +4,22 @@ A successful collection is not a successful report. A recently fetched source is
 
 ## Active collection schedule
 
-Effective with the November 3, 2026 schedule change on main, the native GitHub workflow uses `36 0 * * *`, `36 6 * * *`, `36 12 * * *` and `36 18 * * *`, each with `timezone: America/New_York`. The intended daily starts are 00:36, 06:36, 12:36 and 18:36 Eastern, replacing 00:03, 05:35 and 13:26. The identical `WORKFLOW.yml` reference copy must stay aligned with `.github/workflows/weather.yml`.
+Effective with the November 6, 2026 schedule change on main, the native GitHub workflow uses `31 2 * * *`, `39 8 * * *`, `35 14 * * *` and `23 22 * * *`, each with `timezone: America/New_York`. The intended daily starts are 02:31, 08:39, 14:35 and 22:23 Eastern, replacing 00:36, 06:36, 12:36 and 18:36. The identical `WORKFLOW.yml` reference copy must stay aligned with `.github/workflows/weather.yml`.
 
 | Collection | Intended start, Eastern |
 | --- | --- |
-| Overnight | 00:36 |
-| Morning | 06:36 |
-| Midday | 12:36 |
-| Evening | 18:36 |
+| Overnight | 02:31 |
+| Morning | 08:39 |
+| Afternoon | 14:35 |
+| Late evening | 22:23 |
 
-For historical timing audits, apply the schedule actually in effect at each occurrence. October 19 began with 02:00, 09:00 and 16:00; the midday change set 00:35, 06:35 and 15:35. That evening the afternoon slot moved to 14:13, first upcoming on October 20. The October 27 change set 00:03, 05:35 and 13:26. The November 3 change applies only after its commit reaches main; it does not relabel earlier runs or replay elapsed slots. The completed October 19-25 audit is not restarted or extended.
+For historical timing audits, apply the schedule actually in effect at each occurrence. October 19 began with 02:00, 09:00 and 16:00; the midday change set 00:35, 06:35 and 15:35. That evening the afternoon slot moved to 14:13, first upcoming on October 20. The October 27 change set 00:03, 05:35 and 13:26. The November 3 change set 00:36, 06:36, 12:36 and 18:36. The November 6 change applies only after its commit reaches main; it does not relabel earlier runs or replay elapsed slots. The completed October 19-25 audit is not restarted or extended.
 
 This is a change to the existing collector's native schedule, not activation of another host or checker. This repository update does not change separate report/check schedules, delivery conditions, notification settings, permissions or privacy rules. A schedule entry is an intended start, not proof of actual execution, publication or report consumption. Inspect actual run history and artifact timestamps. Do not infer a missed collection solely because its acquisition age exceeds 90 minutes, and do not continue expecting superseded native starts.
 
 Collection and report schedules are separate. A collection that starts on time can be acquisition-aged by a later report; a collection scheduled after a report cannot supply that earlier deadline. The 90-minute acquisition label is unchanged and is not the forecast's useful lifetime. Review covered forecast periods, source updates, completeness and newer evidence at report time; record accepted dated use and its reason. Freshly recheck alerts and current observations/air quality. Neither an early collection nor an earlier empty alert response establishes current conditions or an all-clear.
 
-GitHub may delay or drop scheduled starts, especially near the start of an hour. The approved minute 36 does not guarantee punctuality; no specific minute is treated as a reliability fix. Extra lead time is a buffer and can leave older forecasts at report time if acquisition runs on time. Keep the IANA timezone rather than treating these hours as fixed UTC offsets. The local hours avoid the spring-forward skipped 02:00 hour; daylight-saving transitions still require interval-aware forecast review.
+GitHub may delay or drop scheduled starts, especially near the start of an hour. The approved minutes do not guarantee punctuality; no specific minute is treated as a reliability fix. Extra lead time is a buffer and can leave older forecasts at report time if acquisition runs on time. Keep the IANA timezone rather than treating these hours as fixed UTC offsets. The 02:31 local start falls in the skipped hour during spring-forward transitions. GitHub documents that timezone-aware schedules in a skipped hour advance to the next valid time, so this occurrence advances to 03:00. Daylight-saving transitions still require interval-aware forecast review.
 
 ## Independent starter and checker, optional and not activated here
 
