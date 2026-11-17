@@ -21,7 +21,7 @@ function setup(payloads, headers = {}) {
   const calls = [], sleeps = [];
   const meta = () => ({ last_run_initialisation_time: NOW / 1000 - 43200, last_run_availability_time: NOW / 1000 - 36000,
     last_run_modification_time: NOW / 1000 - 36600, temporal_resolution_seconds: 10800, update_interval_seconds: 43200 });
-  return { calls, sleeps, count: () => count, options: { clock: () => now, sleep: async ms => { sleeps.push(ms); now += ms; },
+  return { calls, sleeps, count: () => count, options: { precisionChecks: false, clock: () => now, sleep: async ms => { sleeps.push(ms); now += ms; },
     fetchImpl: async url => {
       calls.push(url);
       if (new URL(url).pathname.endsWith('meta.json')) return new Response(JSON.stringify(meta()), { headers: { 'content-type': 'application/json' } });

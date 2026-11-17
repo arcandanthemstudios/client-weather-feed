@@ -54,3 +54,13 @@ Use standard runners, short retention and eligible noncommercial API use. Public
 ## Attribution
 
 Code is MIT licensed. Weather data and derived statistics require attribution to Open-Meteo, ECMWF and Environment and Climate Change Canada under applicable licenses, including CC BY 4.0 as documented by Open-Meteo.
+
+## Precision-aware precipitation handling
+
+ECMWF precipitation has a native three-hour quality check and a narrowly bounded,
+source-reproduced correction path. Adjusted values are explicitly labeled; raw
+evidence is preserved. Unknown negatives still remain unavailable. See
+[the precision policy](docs/precipitation-precision.md) for the per-interval
+packing-error calculation, limitations, resource budgets and failure behavior.
+The collection workflow installs `python3-eccodes`; no paid service or credential
+is required.

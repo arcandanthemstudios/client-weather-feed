@@ -69,7 +69,7 @@ export function renderHTML(feed) {
 <nav><a href="latest.txt">Text feed</a><a href="latest.json">Validated JSON</a><a href="status.json">Collection status</a></nav>
 <h2>Acquisition, forecast and uncertainty</h2><pre>${htmlEscape(renderText(feed))}</pre>
 <p>Attribution: <a href="https://open-meteo.com/">Open-Meteo</a>, ECMWF and Environment and Climate Change Canada.
-Weather data: <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Modifications: validation, per-model member statistics, unit conversions and specified interval aggregation.</p>
+Weather data: <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Modifications: validation, per-model member statistics, unit conversions and specified interval aggregation, and explicitly flagged precision-bounded precipitation adjustments.</p>
 <script>const box=document.getElementById('current-status');function updateStatus(){const now=Date.now(),deadline=Date.parse(box.dataset.expires),generated=Date.parse(box.dataset.generated);box.textContent=box.dataset.ready==='true'&&Number.isFinite(deadline)&&now>=generated-300000&&now<=deadline?'Within the acquisition-age window. Model initialization is still not independently verified.':'Collection is dated or incomplete. Review each source and forecast window; do not label it fresh.';}updateStatus();setInterval(updateStatus,30000);</script>
 </body></html>`;
 }

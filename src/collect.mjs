@@ -1,6 +1,8 @@
 /** Acquisition occurs in this internet-capable Node service, never in the report writer. */
 import { createHash } from 'node:crypto';
 import { MODELS, TARGET, REQUIRED, iso, validateRecord, parseUTC, assessMetadata } from './core.mjs';
+import { inspectNative, PRECIPITATION_POLICY } from './precipitation-quality.mjs';
+import { obtainPrecisionProofs } from './ecmwf-precision.mjs';
 export const FORECAST_ORIGIN = 'https://ensemble-api.open-meteo.com';
 export const META_ORIGIN = 'https://api.open-meteo.com';
 export function forecastURL(model, { variables = REQUIRED, probe = false } = {}) {
@@ -95,18 +97,57 @@ async function collectModelOnce(model, options = {}) {
   const metadata_before = await requestJSON(metadataURL(model), { ...options, attempts: 1, maxBytes: 128 * 1024 });
   const payload = await requestJSON(url, options);
   // Skip another request after a forecast failure; it cannot establish value-level success.
+  let native = null;
+  if (model === 'ecmwf_ifs025_ensemble' && variables.includes('precipitation') &&
+      payload.raw_response && options.precisionChecks !== false) {
+    try {
+      const shape = validateRecord({ requested_model: model, ...payload }, ['precipitation']);
+      if (shape.variables.precipitation.window_usable) {
+        const nativeURL = new URL(forecastURL(model, { variables: ['precipitation'] }));
+        nativeURL.searchParams.set('temporal_resolution', 'hourly_3');
+        nativeURL.searchParams.set('forecast_days', '5'); // Include the final hourly interval's endpoint.
+        native = await requestJSON(nativeURL.toString(), { ...options, attempts: 1, maxBytes: 2 * 1024 * 1024 });
+      }
+    } catch { /* Structural failures remain failures; no corrective source request. */ }
+  }
   const metadata_after = payload.raw_response ? await requestJSON(metadataURL(model), {
     ...options, attempts: 1, maxBytes: 128 * 1024 }) : { status: 'not_attempted_after_forecast_failure' };
   const result = { requested_model: model, requested_coordinates: [TARGET.latitude, TARGET.longitude],
     delivery_provider: 'Open-Meteo', model_initialization: null,
     ...payload, metadata_before, metadata_after };
+  if (native) {
+    result.precipitation_quality = { policy: PRECIPITATION_POLICY, native,
+      source_response_sha256: result.response_sha256, native_response_sha256: native.response_sha256,
+      proofs: { status: 'not_needed', intervals: [] } };
+    const check = inspectNative(result);
+    const meta = assessMetadata(metadata_before, metadata_after, native.received_at_utc ?? result.received_at_utc);
+    if (check.status === 'checked' && check.intervals.length &&
+        meta.status === 'provider_metadata_stable_not_value_level_provenance') {
+      const run = Date.parse(meta.provider_reported_initialization_utc);
+      const hourlyTimes = result.raw_response.hourly.time.map(parseUTC);
+      const intervals = check.intervals.filter(x => {
+        const end = Date.parse(x.valid_utc);
+        if (end < hourlyTimes[0] || end - 2 * 3600000 > hourlyTimes.at(-1)) return false;
+        const step = (Date.parse(x.valid_utc) - run) / 3600000;
+        return Number.isInteger(step) && step >= 6 && step <= 144 && step % 3 === 0;
+      }).slice(0, 8);
+      if (intervals.length) {
+        try { result.precipitation_quality.proofs = await (options.precisionProofsImpl ?? obtainPrecisionProofs)({
+          initialization_utc: meta.provider_reported_initialization_utc, latitude: result.raw_response.latitude,
+          longitude: result.raw_response.longitude, intervals }); }
+        catch { result.precipitation_quality.proofs = { status: 'unavailable', intervals: [] }; }
+      }
+    }
+  }
   if (payload.raw_response) {
     try {
       const v = validateRecord(result, variables);
       result.numeric_validation = { validated_variables: Object.fromEntries(Object.entries(v.variables)
         .map(([k, x]) => [k, { usable: x.usable, window_usable: x.window_usable ?? false,
           missing_values: x.missing_values ?? null, invalid_value_count: x.invalid_value_count ?? 0,
-          invalid_values: x.invalid_values ?? [], problems: x.problems }])),
+          invalid_values: x.invalid_values ?? [],
+          precision_adjustments: x.quality?.corrections ?? [], native_rejections: x.quality?.rejected ?? [],
+          problems: x.problems }])),
         member_series: v.expected_members, grid_distance_km: v.grid_distance_km,
         returned_coordinates: v.sampled_coordinates, problems: v.problems,
         model_initialization: null, same_run_comparison_permitted: false };

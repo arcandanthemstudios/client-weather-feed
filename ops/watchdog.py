@@ -21,14 +21,15 @@ import urllib.request
 import zipfile
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from precipitation_quality import overrides as precipitation_overrides
 
 UTC = timezone.utc
 EASTERN = ZoneInfo('America/New_York')
 WORKFLOW = '.github/workflows/weather.yml'
 MEMBERS = {'ecmwf_ifs025_ensemble': 51, 'cmc_gem_geps': 21}
 UNITS = {'temperature_2m': '°C', 'precipitation': 'mm', 'wind_speed_10m': 'm/s'}
-MAX_ZIP = 5 * 1024 * 1024
-MAX_UNPACKED = 25 * 1024 * 1024
+MAX_ZIP = 40 * 1024 * 1024
+MAX_UNPACKED = 64 * 1024 * 1024
 ACTIVE = {'queued', 'in_progress', 'waiting', 'requested', 'pending'}
 
 
@@ -91,7 +92,7 @@ def read_package(archive: bytes) -> dict:
     output = {}
     with zipfile.ZipFile(io.BytesIO(archive)) as z:
         entries = z.infolist()
-        if len(entries) > 12 or sum(x.file_size for x in entries) > MAX_UNPACKED:
+        if len(entries) > 40 or sum(x.file_size for x in entries) > MAX_UNPACKED:
             raise ValueError('Archive exceeds expansion budget')
         seen = set()
         for info in entries:
@@ -163,6 +164,7 @@ def inspect_package(archive: bytes, now: datetime, deadline: datetime, target) -
             index = {t: i for i, t in enumerate(times)}
             if any(t not in index for t in required):
                 raise ValueError('Forecast does not cover report through final following night')
+            adjustments = precipitation_overrides(record, times)
             for variable, unit in UNITS.items():
                 members = {}
                 for key, values in hourly.items():
@@ -181,6 +183,10 @@ def inspect_package(archive: bytes, now: datetime, deadline: datetime, target) -
                         raise ValueError('Member units/array length mismatch')
                     if any(v is not None and not finite(v) for v in values):
                         raise ValueError('Non-numeric model value')
+                    if variable == 'precipitation':
+                        values = [adjustments.get((member, i), value) for i, value in enumerate(values)]
+                        if any(value is None for (m, _), value in adjustments.items() if m == member):
+                            raise ValueError('Unverified native precipitation interval')
                     if variable != 'temperature_2m' and any(finite(v) and v < 0 for v in values):
                         raise ValueError('Negative interval/wind value')
                     if any(not finite(values[index[t]]) for t in required):
@@ -192,7 +198,8 @@ def inspect_package(archive: bytes, now: datetime, deadline: datetime, target) -
             if meta.get('status') in ('provider_metadata_stale', 'invalid_or_future_metadata', 'metadata_changed_during_fetch', 'provider_update_still_propagating'):
                 raise ValueError('Provider metadata guard requires review')
             check.update(numerical_content_validated=True, received_at_utc=iso(received),
-                         coverage_end_utc=iso(times[-1]), api_series_count=MEMBERS[model])
+                         coverage_end_utc=iso(times[-1]), api_series_count=MEMBERS[model],
+                         precision_adjusted_hourly_cells=sum(v == 0 for v in adjustments.values()))
         except (ValueError, KeyError, TypeError, OverflowError) as exc:
             check['reason'] = str(exc)
         checks.append(check)
