@@ -54,7 +54,10 @@ export function validateExtra(raw, model, variable, now=Date.now()) {
 export function wetTiming(record, now=Date.now(), threshold=0.1) {
   const v=validateRecord(record), a=v.variables.precipitation;
   if(!a?.usable) return {status:'unavailable'};
-  return {status:'derived', threshold_mm_per_hour:threshold, phase:'water equivalent; rain versus snow not inferred',
+  return {status:'derived', quality_adjusted:Boolean(a.quality?.adjusted_intervals),
+    precision_adjusted_intervals:a.quality?.adjusted_intervals??0,
+    quality_note:a.quality?.adjusted_intervals?'Source-reproduced precision adjustments affect these estimates; adjusted zeros are not proof of dry weather.':null,
+    threshold_mm_per_hour:threshold, phase:'water equivalent; rain versus snow not inferred',
     method:'Per member, first/last wet interval and wettest 3-hour block inside each day. All days include dry members in occurrence fraction. Timing ranges condition on wet members. Separate rounds can share one envelope. Boundary-censored ends are not cessation forecasts.',
     confidence_score:null, calibrated_probability:false,
     days:[0,1,2].map(d=>{

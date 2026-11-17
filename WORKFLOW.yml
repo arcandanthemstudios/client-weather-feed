@@ -51,10 +51,15 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+      - name: Install ECMWF precision decoder
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-eccodes
       - name: Run offline validation tests
         run: |
           npm test
-          python3 -m unittest discover -s ops -p 'test_*.py' -v
+          /usr/bin/python3 -m unittest discover -s ops -p 'test_*.py' -v
       - name: Name this collection's Pages package
         id: pages_package
         shell: bash

@@ -2,7 +2,8 @@
 const OMIT = new Set([
   'latitude', 'longitude', 'lat', 'lon', 'coordinates', 'requested_coordinates',
   'sampled_coordinates', 'returned_coordinates', 'requested_target', 'source_url',
-  'url', 'final_url', 'request_url', 'raw_response', 'capture', 'attempts', 'numerical_attempts', 'invalid_values'
+  'url', 'final_url', 'request_url', 'raw_response', 'capture', 'attempts', 'numerical_attempts', 'invalid_values',
+  'precipitation_quality', 'precision_adjustments', 'native_rejections', 'proofs', 'corrections', 'rejected', 'overrides'
 ]);
 export function publicView(value) {
   if (Array.isArray(value)) return value.map(publicView);

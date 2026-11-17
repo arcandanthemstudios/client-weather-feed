@@ -1,4 +1,5 @@
 /** Pure analysis and validation. No network, file writes, calendar or task access. */
+import { precipitationOverrides } from './precipitation-quality.mjs';
 export const SCHEMA = 'philly-ensemble-service-v1';
 export const TARGET = Object.freeze({ latitude: 39.95, longitude: -75.16,
   label: '19107 representative target', postal_polygon_verified: false });
@@ -109,6 +110,7 @@ export function validateRecord(record, variables = REQUIRED) {
     throw new Error('Unrecognized time units');
   for (let i = 1; i < timestamps.length; i++)
     if (timestamps[i] - timestamps[i - 1] !== HOUR) throw new Error('Hourly time axis has a duplicate, gap or non-hourly step');
+  const quality = variables.includes('precipitation') ? precipitationOverrides(record, timestamps) : null;
   const result = {}, issues = [];
   for (const variable of variables) {
     if (!UNITS[variable]) throw new Error('Unsupported variable semantics');
@@ -129,13 +131,17 @@ export function validateRecord(record, variables = REQUIRED) {
         (id > 0 && k.startsWith(variable + '_member') && Number(k.slice(variable.length + 7)) === id));
       if (raw.hourly_units[unitKey] !== UNITS[variable]) structuralProblems.push(`Unexpected ${variable} units for member ${id}`);
       if (!Array.isArray(a) || a.length !== timestamps.length) { structuralProblems.push(`Bad ${variable} array length for member ${id}`); continue; }
-      // Copy, never edit raw_response. A rejected cell becomes unavailable, never zero.
+      // Copy, never edit raw_response. Only a source-reproduced precision adjustment may become zero.
       arrays.push(a.map((value, index) => {
         if (value === null) { missing++; return null; }
-        const reason = !finite(value) ? 'non_numeric' : variable !== 'temperature_2m' && value < 0 ? 'negative' : null;
+        const adjustmentKey = `${id}:${index}`;
+        const hasAdjustment = variable === 'precipitation' && quality?.overrides.has(adjustmentKey);
+        if (hasAdjustment && quality.overrides.get(adjustmentKey) === 0) return 0;
+        const reason = !finite(value) ? 'non_numeric' : variable !== 'temperature_2m' && value < 0 ? 'negative' :
+          hasAdjustment ? 'unverified_native_negative' : null;
         if (!reason) return value;
         invalidValues.push({ member_id: id, index, valid_utc: iso(timestamps[index]), value, reason });
-        valueProblems.push(reason === 'negative' ? `Negative ${variable}; interval semantics or data invalid` :
+        valueProblems.push(reason === 'unverified_native_negative' ? 'Negative native precipitation hidden by hourly rounding; precision evidence unavailable' : reason === 'negative' ? `Negative ${variable}; interval semantics or data invalid` :
           `Non-numeric ${variable} value for member ${id}`);
         return null;
       }));
@@ -147,6 +153,7 @@ export function validateRecord(record, variables = REQUIRED) {
       arrays: structuralProblems.length ? [] : arrays,
       missing_values: missing, invalid_value_count: invalidValues.length,
       invalid_values: invalidValues, expected_members: spec.count, problems,
+      quality: variable === 'precipitation' && !structuralProblems.length ? quality : null,
       structural_problems: [...new Set(structuralProblems)] };
     issues.push(...problems);
   }
@@ -219,7 +226,10 @@ export function precipitationPeriod(validated, start, end, thresholdMm = 1) {
     a => a.reduce((sum, x) => sum + x, 0), true);
   const vals = (p.member_values ?? []).filter(finite), exceed = vals.filter(x => x >= thresholdMm).length;
   delete p.member_values;
-  return { ...p, units: 'mm liquid-water equivalent',
+  const adjustments = (validated.variables.precipitation?.quality?.corrections ?? []).filter(x =>
+    parseUTC(x.valid_utc) > start && parseUTC(x.valid_utc) - 3 * HOUR < end);
+  return { ...p, quality_adjusted: adjustments.length > 0, adjusted_native_intervals: adjustments.length,
+    units: 'mm liquid-water equivalent',
     timestamp_semantics: 'preceding-hour sums; interval is (start, end] on returned timestamps',
     threshold_mm: thresholdMm, members_at_or_above_threshold: p.complete ? exceed : null,
     raw_member_fraction: p.complete ? exceed / p.expected_n : null,
@@ -251,7 +261,8 @@ export function summarizeRecord(record, now = Date.now(), variables = REQUIRED) 
   const hourly = v.timestamps.map((t, i) => ({ valid_utc: iso(t), local: localParts(t),
     temperature_c: completeStats(valuesAt(v.variables.temperature_2m, i), v.expected_members),
     wind_speed_ms: completeStats(valuesAt(v.variables.wind_speed_10m, i), v.expected_members),
-    precipitation_previous_hour_mm: completeStats(valuesAt(v.variables.precipitation, i), v.expected_members)
+    precipitation_previous_hour_mm: { ...completeStats(valuesAt(v.variables.precipitation, i), v.expected_members),
+      quality_adjusted: (v.variables.precipitation?.quality?.corrections ?? []).some(x => x.hourly_indices.includes(i)) }
   })).filter(x => parseUTC(x.valid_utc) >= Math.floor(now / HOUR) * HOUR && parseUTC(x.valid_utc) <= now + 84 * HOUR);
   const requiredEnd = boundary(addDate(today, 3), 6);
   const futureTimes = expectedHours(Math.ceil(now / HOUR) * HOUR, requiredEnd, false);
@@ -273,9 +284,14 @@ export function summarizeRecord(record, now = Date.now(), variables = REQUIRED) 
     acquisition_age_minutes: (now - receivedMs) / 60000,
     expected_future_end_utc: iso(requiredEnd), complete_future_required_variables: completeFuture,
     returned_value_checks_passed: REQUIRED.every(k => v.variables[k]?.usable === true),
+    returned_value_checks_semantics: 'Validated analysis values; documented precision adjustments may be present. Raw responses are unchanged.',
+    raw_returned_value_checks_passed: REQUIRED.every(k => v.variables[k]?.usable === true) &&
+      !(v.variables.precipitation?.quality?.adjusted_negative_hourly_cells > 0),
     validation_scope: 'Rejected cells are isolated; use each exact window only when all expected members are valid.',
     variables: Object.fromEntries(Object.entries(v.variables).map(([k, x]) => [k, {
-      status: !windowUsable(x) ? 'invalid_or_unavailable' : x.missing_values || x.invalid_value_count ? 'partial_values' : 'numerical_values_validated',
+      status: !windowUsable(x) ? 'invalid_or_unavailable' : x.missing_values || x.invalid_value_count ? 'partial_values' :
+        x.quality?.adjusted_intervals ? 'validated_with_documented_adjustments' : 'numerical_values_validated',
+      precision_adjustment: x.quality ? Object.fromEntries(Object.entries(x.quality).filter(([k]) => !['overrides', 'corrections', 'rejected'].includes(k))) : null,
       missing_values: x.missing_values ?? null, invalid_value_count: x.invalid_value_count ?? 0,
       affected_member_ids: [...new Set((x.invalid_values ?? []).map(z => z.member_id))],
       problems: x.problems, units: UNITS[k] }])),
@@ -326,13 +342,16 @@ export function textFeed(summary, readiness) {
     `Usability gate: ${readiness.ready ? 'PASS (acquisition/coverage only; run provenance unverified)' : 'NOT READY — do not treat this as a fresh complete comparison'}`,
     'All values are model forecasts via Open-Meteo. No current observations, alerts or calendar data.',
     'Different sampled grid points; no claim of verified same-run comparison.',
-    'Rejected cells remain unavailable. Unaffected windows retain every expected member; incomplete-window statistics are suppressed.', ''];
+    'Unexplained rejected cells remain unavailable. Precision-adjusted precipitation is labeled; raw values are retained. Incomplete-window statistics are suppressed.', ''];
   for (const m of summary?.models ?? []) {
     lines.push(m.name ?? m.model);
     if (m.error) { lines.push(`Unavailable: ${m.error}`, ''); continue; }
     lines.push(`Retrieved: ${m.received_at_utc}; grid ${m.sampled_coordinates.latitude}, ${m.sampled_coordinates.longitude}; distance ${f(m.grid_distance_km)} km`,
       `Provider metadata: ${m.metadata.status}; reported latest initialization: ${m.metadata.provider_reported_initialization_utc ?? 'unknown'}`,
       'Extrema below are sampled 06–18 high and following 18–06 low, median across member-series; not official daily extrema.');
+    const quality = m.variables?.precipitation?.precision_adjustment;
+    if (quality?.adjusted_intervals) lines.push(`Precipitation quality: ${quality.adjusted_intervals} native intervals adjusted to zero within source encoding precision; not proof of exact dry weather.`);
+    if (quality?.unverified_native_intervals) lines.push(`Precipitation quality: ${quality.unverified_native_intervals} native negative intervals remain unavailable.`);
     for (const d of m.days) {
       const c = d.celsius, fa = d.fahrenheit;
       lines.push(`${d.date} — Celsius: high ${f(c.sampled_daytime_high.median)}°C, nighttime low ${f(c.following_night_low.median)}°C | Fahrenheit: high ${f(fa.sampled_daytime_high.median)}°F, nighttime low ${f(fa.following_night_low.median)}°F`);
