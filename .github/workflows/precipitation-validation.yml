@@ -1,0 +1,38 @@
+name: Validate precipitation correction
+on:
+  push:
+    branches: [repair/precision-aware-precipitation-20261117]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Validate existing safeguards
+        run: |
+          npm test
+          python3 -m unittest discover -s ops -p 'test_*.py' -v
+      - name: Retain source snapshot for offline repair validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: precipitation-validation-source
+          path: |
+            src/
+            test/
+            ops/
+            docs/
+            package.json
+            README.md
+            WORKFLOW.yml
+            .github/workflows/weather.yml
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
